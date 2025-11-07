@@ -1,4 +1,4 @@
-# Ulreaman Local
+# Ultraman Local
 
 本地轻量级管理面板，用 Flask 搭建。目标是整合常用的信息和操作，比如：
 
