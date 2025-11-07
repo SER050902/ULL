@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}LocalHub | 系统信息{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">平台</div>
+      <div class="card-body">
+        <div>平台：{{ info.platform.platform }}</div>
+        <div>机器：{{ info.platform.machine }}</div>
+        <div>处理器：{{ info.platform.processor }}</div>
+        <div>Python：{{ info.platform.python }}</div>
+        <div>开机：{{ info.platform.boot_time }}，已运行 {{ info.platform.uptime_h }}</div>
+      </div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header">CPU</div>
+      <div class="card-body">
+        <div>物理/逻辑：{{ info.cpu.physical }} / {{ info.cpu.logical }}</div>
+        <div>当前频率：{{ info.cpu.freq_current or "-" }} MHz</div>
+        <div>占用：{{ info.cpu.usage_percent }}%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">内存</div>
+      <div class="card-body">
+        <div>总计：{{ info.memory.total }}</div>
+        <div>已用：{{ info.memory.used }} / 可用：{{ info.memory.available }}</div>
+        <div>占用：{{ info.memory.percent }}%</div>
+      </div>
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-header">GPU</div>
+      <div class="card-body">
+        {% if info.gpus and info.gpus|length > 0 %}
+          <ul class="mb-0">
+          {% for g in info.gpus %}
+            <li class="mb-1">
+              <strong>{{ g.name }}</strong> · 负载 {{ g.load }} · 显存 {{ g.memory_used }}/{{ g.memory_total }}
+              {% if g.temperature is not none %} · 温度 {{ g.temperature }}°C{% endif %}
+            </li>
+          {% endfor %}
+          </ul>
+        {% else %}
+          <em class="text-muted">未检测到可用 GPU 或未安装 NVIDIA 驱动。</em>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header">磁盘</div>
+  <div class="card-body">
+    {% if info.disks %}
+    <table class="table table-sm mb-0">
+      <thead><tr><th>设备</th><th>挂载点</th><th>类型</th><th>总计</th><th>已用</th><th>可用</th><th>占用</th></tr></thead>
+      <tbody>
+      {% for d in info.disks %}
+        <tr>
+          <td><code>{{ d.device }}</code></td>
+          <td><code>{{ d.mount }}</code></td>
+          <td>{{ d.fstype }}</td>
+          <td>{{ d.total }}</td>
+          <td>{{ d.used }}</td>
+          <td>{{ d.free }}</td>
+          <td>{{ d.percent }}%</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <em class="text-muted">没有磁盘数据。</em>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
