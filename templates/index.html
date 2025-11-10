@@ -1,10 +1,51 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "base.html" %}
 
-</body>
-</html>
+{% block title %}LocalHub | 首页{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title">系统信息</h5>
+        <p class="text-muted mb-3">CPU / 内存 / 磁盘 / GPU 概览。</p>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('system') }}">查看系统</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title">网络信息</h5>
+        <p class="text-muted mb-3">公网 IP 与本机各网卡地址。</p>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('network') }}">查看网络</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h5 class="card-title">文件管理</h5>
+        <p class="text-muted mb-3">浏览、下载与上传到工作目录。</p>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('files') }}">进入文件</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-4">
+  <div class="card-body d-flex align-items-center justify-content-between">
+    <div>
+      <h6 class="mb-1">快速提示</h6>
+      <div class="text-muted small">左侧导航随时可达功能页。系统与网络页后面会接实时刷新。</div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('index') }}">刷新</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_end %}
+<!-- 需要的话在这里挂前端脚本；现在留空 -->
+{% endblock %}

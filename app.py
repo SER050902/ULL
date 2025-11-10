@@ -1,16 +1,13 @@
 from flask import Flask, render_template
-from backend import get_system_overview   # ← 加这一行
+from backend import get_system_overview  # 只导入函数，启动期就能发现问题
 
 def create_app():
     app = Flask(__name__)
-    app.config.update(
-        SECRET_KEY="dev-change-me",
-    )
+    app.config.update(SECRET_KEY="dev-change-me")
 
     @app.route("/")
     def index():
-        # 有 index.html 就渲染它；没有就先用 base.html 占位
-        return render_template("index.html")  # 或者 "base.html"
+        return render_template("index.html")
 
     @app.route("/system")
     def system():
@@ -19,11 +16,11 @@ def create_app():
 
     @app.route("/files")
     def files():
-        return render_template("files.html")  # 至少先放个占位模板
+        return render_template("files.html")
 
     @app.route("/network")
     def network():
-        return render_template("base.html")
+        return render_template("network.html")
 
     return app
 

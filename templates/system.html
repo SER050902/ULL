@@ -8,13 +8,24 @@
     <div class="card">
       <div class="card-header">平台</div>
       <div class="card-body">
-        <div>平台：{{ info.platform.platform }}</div>
+        <div>
+          平台：
+          {% if info.platform.os_product %}
+            {{ info.platform.os_product }}{% if info.platform.os_display %} {{ info.platform.os_display }}{% endif %}
+            {% if info.platform.os_build %}
+              <span class="badge bg-secondary ms-1">Build {{ info.platform.os_build }}</span>
+            {% endif %}
+          {% else %}
+            {{ info.platform.platform }}
+          {% endif %}
+        </div>
         <div>机器：{{ info.platform.machine }}</div>
-        <div>处理器：{{ info.platform.processor }}</div>
+        <div>处理器：{{ info.platform.cpu_brand or info.platform.processor }}</div>
         <div>Python：{{ info.platform.python }}</div>
         <div>开机：{{ info.platform.boot_time }}，已运行 {{ info.platform.uptime_h }}</div>
       </div>
     </div>
+
     <div class="card mt-3">
       <div class="card-header">CPU</div>
       <div class="card-body">
@@ -42,13 +53,19 @@
           <ul class="mb-0">
           {% for g in info.gpus %}
             <li class="mb-1">
-              <strong>{{ g.name }}</strong> · 负载 {{ g.load }} · 显存 {{ g.memory_used }}/{{ g.memory_total }}
-              {% if g.temperature is not none %} · 温度 {{ g.temperature }}°C{% endif %}
+              <strong>{{ g.name or 'Unknown GPU' }}</strong>
+              {% if g.vendor %}<span class="text-muted">({{ g.vendor }})</span>{% endif %}
+              {% if g.load %} · 负载 {{ g.load }}{% endif %}
+              {% if g.freq %} · 频率 {{ g.freq }}{% endif %}
+              {% if g.memory_used and g.memory_total %} · 显存 {{ g.memory_used }}/{{ g.memory_total }}{% elif g.memory_total %} · 显存总计 {{ g.memory_total }}{% endif %}
+              {% if g.temperature %} · 温度 {{ g.temperature }}{% endif %}
+              {% if g.driver %} · 驱动 {{ g.driver }}{% endif %}
+              {% if g.notes %}<br><small class="text-muted">{{ g.notes|join(' | ') }}</small>{% endif %}
             </li>
           {% endfor %}
           </ul>
         {% else %}
-          <em class="text-muted">未检测到可用 GPU 或未安装 NVIDIA 驱动。</em>
+          <em class="text-muted">未检测到可用 GPU。</em>
         {% endif %}
       </div>
     </div>
@@ -59,22 +76,26 @@
   <div class="card-header">磁盘</div>
   <div class="card-body">
     {% if info.disks %}
-    <table class="table table-sm mb-0">
-      <thead><tr><th>设备</th><th>挂载点</th><th>类型</th><th>总计</th><th>已用</th><th>可用</th><th>占用</th></tr></thead>
-      <tbody>
-      {% for d in info.disks %}
-        <tr>
-          <td><code>{{ d.device }}</code></td>
-          <td><code>{{ d.mount }}</code></td>
-          <td>{{ d.fstype }}</td>
-          <td>{{ d.total }}</td>
-          <td>{{ d.used }}</td>
-          <td>{{ d.free }}</td>
-          <td>{{ d.percent }}%</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+      <table class="table table-sm mb-0">
+        <thead>
+          <tr>
+            <th>设备</th><th>挂载点</th><th>类型</th><th>总计</th><th>已用</th><th>可用</th><th>占用</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in info.disks %}
+          <tr>
+            <td><code>{{ d.device }}</code></td>
+            <td><code>{{ d.mount }}</code></td>
+            <td>{{ d.fstype or '-' }}</td>
+            <td>{{ d.total }}</td>
+            <td>{{ d.used }}</td>
+            <td>{{ d.free }}</td>
+            <td>{{ d.percent }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     {% else %}
       <em class="text-muted">没有磁盘数据。</em>
     {% endif %}
