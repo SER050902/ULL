@@ -96,6 +96,62 @@
           {% endfor %}
         </tbody>
       </table>
+      
+    {% else %}
+      <em class="text-muted">没有磁盘数据。</em>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header">磁盘空间可视化</div>
+  <div class="card-body">
+    {% if info.disks %}
+      <div class="row">
+        {% for d in info.disks %}
+          <div class="col-md-4 text-center mb-4">
+            <h6>{{ d.device }}</h6>
+            <canvas id="diskChart{{ loop.index }}"></canvas>
+          </div>
+        {% endfor %}
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+      <script>
+      document.addEventListener("DOMContentLoaded", function() {
+        {% for d in info.disks %}
+        new Chart(document.getElementById("diskChart{{ loop.index }}"), {
+          type: 'pie',
+          data: {
+            labels: ['已用', '可用'],
+            datasets: [{
+              data: [
+                {{ d.used | replace(',', '') | replace(' GB','') | float }},
+                {{ d.free | replace(',', '') | replace(' GB','') | float }}
+              ],
+              backgroundColor: ['#ff6384', '#36a2eb'],
+              hoverOffset: 10
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { position: 'bottom' },
+              title: {
+                display: true,
+                text: '磁盘使用情况'
+              },
+              tooltip: {
+                callbacks: {
+                  label: ctx => `${ctx.label}: ${ctx.parsed} GB`
+                }
+              }
+            }
+          }
+        });
+        {% endfor %}
+      });
+      </script>
     {% else %}
       <em class="text-muted">没有磁盘数据。</em>
     {% endif %}
