@@ -1,5 +1,66 @@
 {% extends "base.html" %}
 {% block title %}LocalHub | 网络{% endblock %}
+
 {% block content %}
-<em class="text-muted">网络信息占位。后续将显示公网 IP 与各网卡地址。</em>
+<h2>网络概览</h2>
+
+<p>
+    <strong>公网 IP：</strong>
+    {% if info.public_ip %}
+        {{ info.public_ip }}
+    {% else %}
+        <span class="text-muted">获取失败（可能无外网 / 被拦截）</span>
+    {% endif %}
+</p>
+
+{% if info.lan_ip %}
+<p><strong>首选局域网 IP：</strong>{{ info.lan_ip }}</p>
+{% endif %}
+
+<h3 class="mt-4">网卡信息</h3>
+<ul>
+    {% for nic in info.interfaces %}
+        <li>
+            <strong>{{ nic.name }}</strong>
+            <ul>
+                {% if nic.ipv4 %}
+                <li>IPv4：{{ nic.ipv4 }}</li>
+                {% endif %}
+                {% if nic.ipv6 %}
+                <li>IPv6：{{ nic.ipv6 }}</li>
+                {% endif %}
+                <li>状态：{{ "UP" if nic.is_up else "DOWN" }}</li>
+                {% if nic.speed %}
+                <li>速度：{{ nic.speed }} Mbps</li>
+                {% endif %}
+            </ul>
+        </li>
+    {% endfor %}
+</ul>
+
+<h3 class="mt-4">监听端口</h3>
+{% if info.listeners %}
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>本地地址</th>
+            <th>端口</th>
+            <th>进程</th>
+            <th>PID</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for p in info.listeners %}
+        <tr>
+            <td>{{ p.laddr_ip }}</td>
+            <td>{{ p.laddr_port }}</td>
+            <td>{{ p.process }}</td>
+            <td>{{ p.pid }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-muted">没检测到监听端口（或无权限）。</p>
+{% endif %}
 {% endblock %}

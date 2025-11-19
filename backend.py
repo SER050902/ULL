@@ -3,9 +3,16 @@ import time
 import platform
 import psutil
 import json
+import socket
 import subprocess as _sp
 import platform as _plat
 import sys
+
+# ========= 可选：requests 用来查公网 IP =========
+try:
+    import requests
+except Exception:
+    requests = None
 
 # ========= 你原来的：N 卡走 GPUtil =========
 try:
@@ -13,87 +20,94 @@ try:
 except Exception:
     GPUtil = None
 
+
 def _fmt_bytes(n):
-    units = ["B","KB","MB","GB","TB","PB"]
+    units = ["B", "KB", "MB", "GB", "TB", "PB"]
     i = 0
     f = float(n)
-    while f >= 1024 and i < len(units)-1:
+    while f >= 1024 and i < len(units) - 1:
         f /= 1024
         i += 1
     return f"{f:.2f} {units[i]}"
 
+
 # ========= Windows：OS/CPU 友好名称 =========
 def _win_os_cpu_pretty():
     """
-    返回 dict:
+    只在 Windows 用，返回:
       os_product: Windows 10 Pro
-      os_display: 23H2 或 None
-      os_build:   19045 等
-      cpu_brand:  Intel(R) Core(TM) i5-1035G1 CPU @ 1.00GHz
-    全部纯系统自带能力，无额外依赖。
+      os_display: 23H2 / 22H2 / ...
+      os_build:   19045
+      cpu_brand:  Intel(R) ...
     """
     if _plat.system() != "Windows":
         return {}
 
-    # 1) 读注册表拿 OS 版本与显示版本
     os_product = None
     os_display = None
     os_build = None
+
+    # 读注册表拿 OS 信息
     try:
         import winreg
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion") as k:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion") as k:
             try:
-                os_product = winreg.QueryValueEx(k, "ProductName")[0]       # Windows 10 Pro
+                os_product = winreg.QueryValueEx(k, "ProductName")[0]
             except Exception:
                 pass
-            # 23H2 在 DisplayVersion；老版本在 ReleaseId
             try:
-                os_display = winreg.QueryValueEx(k, "DisplayVersion")[0]   # 23H2
+                os_display = winreg.QueryValueEx(k, "DisplayVersion")[0]
             except Exception:
                 try:
-                    os_display = winreg.QueryValueEx(k, "ReleaseId")[0]    # 2009 等
+                    os_display = winreg.QueryValueEx(k, "ReleaseId")[0]
                 except Exception:
                     pass
             try:
-                os_build = winreg.QueryValueEx(k, "CurrentBuild")[0]       # 19045
+                os_build = winreg.QueryValueEx(k, "CurrentBuild")[0]
             except Exception:
                 pass
     except Exception:
-        # 注册表失败就退化到 powershell
         os_product = None
         os_display = None
         os_build = None
 
-    # 2) CPU 友好名称：注册表 ProcessorNameString
+    # CPU 友好名称
     cpu_brand = None
     try:
         import winreg
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as k:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as k:
             cpu_brand = winreg.QueryValueEx(k, "ProcessorNameString")[0]
     except Exception:
-        # 兜底：仍然可用 platform.processor()
         cpu_brand = platform.processor() or None
 
     out = {}
-    if os_product: out["os_product"] = os_product
-    if os_display: out["os_display"] = os_display
-    if os_build:   out["os_build"]   = os_build
-    if cpu_brand:  out["cpu_brand"]  = cpu_brand
+    if os_product:
+        out["os_product"] = os_product
+    if os_display:
+        out["os_display"] = os_display
+    if os_build:
+        out["os_build"] = os_build
+    if cpu_brand:
+        out["cpu_brand"] = cpu_brand
     return out
+
 
 # ========= Windows：GPU（Intel/AMD/NVIDIA） =========
 def _ps_run(ps_script: str, timeout=2.5) -> str:
     try:
         out = _sp.check_output(
             ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
-            stderr=_sp.DEVNULL, timeout=timeout
+            stderr=_sp.DEVNULL,
+            timeout=timeout,
         )
         return out.decode("utf-8", "ignore").strip()
     except Exception:
         return ""
 
+
 def _win_gpu_wmi_basic():
-    # 优先 CIM
     ps = r'''
 $gpus = Get-CimInstance Win32_VideoController |
     Select-Object Name,AdapterRAM,DriverVersion,PNPDeviceID
@@ -101,7 +115,6 @@ $gpus | ConvertTo-Json -Compress
 '''
     txt = _ps_run(ps)
     if not txt:
-        # 退化到旧的 WMI
         ps2 = r'''
 $gpus = Get-WmiObject Win32_VideoController |
     Select-Object Name,AdapterRAM,DriverVersion,PNPDeviceID
@@ -109,26 +122,7 @@ $gpus | ConvertTo-Json -Compress
 '''
         txt = _ps_run(ps2)
     if not txt:
-        # 再退到 wmic（部分系统仍可用）
-        txt_wmic = _ps_run(r"wmic path win32_VideoController get Name,AdapterRAM,DriverVersion /format:list")
-        if txt_wmic:
-            blocks = [b for b in txt_wmic.split("\n\n") if "Name=" in b]
-            res = []
-            for b in blocks:
-                d = {}
-                for line in b.splitlines():
-                    if "=" in line:
-                        k,v = line.split("=",1)
-                        d[k.strip()] = v.strip()
-                if d:
-                    res.append({
-                        "Name": d.get("Name"),
-                        "AdapterRAM": int(d["AdapterRAM"]) if d.get("AdapterRAM","").isdigit() else None,
-                        "DriverVersion": d.get("DriverVersion"),
-                        "PNPDeviceID": None
-                    })
-            return _normalize_wmi_list(res)
-        return []  # 全部失败
+        return []
 
     try:
         data = json.loads(txt)
@@ -137,6 +131,7 @@ $gpus | ConvertTo-Json -Compress
         return _normalize_wmi_list(data)
     except Exception:
         return []
+
 
 def _normalize_wmi_list(data_list):
     out = []
@@ -150,8 +145,10 @@ def _normalize_wmi_list(data_list):
             vendor = "AMD"
         elif "intel" in n_low:
             vendor = "Intel"
+
         mem = d.get("AdapterRAM")
         mem_mb = f"{int(mem)//(1024*1024)} MB" if isinstance(mem, int) and mem > 0 else None
+
         item = {
             "name": name or "GPU",
             "vendor": vendor,
@@ -159,13 +156,14 @@ def _normalize_wmi_list(data_list):
             "memory_used": None,
             "load": None,
             "temperature": None,
-            "notes": []
+            "notes": [],
         }
         drv = d.get("DriverVersion")
         if drv:
             item["notes"].append(f"Driver {drv}")
         out.append(item)
     return out
+
 
 def _win_gpu_load_perf():
     ps = r'''
@@ -181,6 +179,7 @@ if ($avg -ne $null) { [math]::Round($avg,1) } else { "" }
     except Exception:
         return None
 
+
 def _collect_gpus_windows():
     basics = _win_gpu_wmi_basic()
     load = _win_gpu_load_perf()
@@ -192,7 +191,8 @@ def _collect_gpus_windows():
         out.append(item)
     return out
 
-# ========= 主函数 =========
+
+# ========= 系统总览 =========
 def get_system_overview():
     boot = psutil.boot_time()
     vm = psutil.virtual_memory()
@@ -226,7 +226,7 @@ def get_system_overview():
                 "total": _fmt_bytes(u.total),
                 "used": _fmt_bytes(u.used),
                 "free": _fmt_bytes(u.free),
-                "percent": u.percent
+                "percent": u.percent,
             })
         except Exception:
             continue
@@ -238,15 +238,14 @@ def get_system_overview():
         "processor": platform.processor(),
         "python": platform.python_version(),
         "boot_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(boot)),
-        "uptime_h": f"{uptime//3600}h {(uptime%3600)//60}m",
+        "uptime_h": f"{uptime // 3600}h {(uptime % 3600) // 60}m",
     }
 
-    # Windows 上补充更友好的 OS/CPU 名称
     win_extra = _win_os_cpu_pretty() if _plat.system() == "Windows" else {}
     if win_extra:
         plat.update(win_extra)
 
-    # GPU：先走 GPUtil（N 卡最准）
+    # GPU
     gpus = []
     if GPUtil:
         try:
@@ -256,14 +255,13 @@ def get_system_overview():
                     "vendor": "NVIDIA",
                     "memory_total": f"{g.memoryTotal} MB",
                     "memory_used": f"{g.memoryUsed} MB",
-                    "load": f"{g.load*100:.1f}%",
+                    "load": f"{g.load * 100:.1f}%",
                     "temperature": getattr(g, "temperature", None),
-                    "notes": []
+                    "notes": [],
                 })
         except Exception:
             pass
 
-    # Windows 再补 Intel/AMD（或没被 GPUtil覆盖的 NVIDIA）
     if _plat.system() == "Windows":
         try:
             win_gpus = _collect_gpus_windows()
@@ -274,4 +272,145 @@ def get_system_overview():
         except Exception:
             pass
 
-    return {"platform": plat, "cpu": cpu, "memory": mem, "disks": disks, "gpus": gpus}
+    return {
+        "platform": plat,
+        "cpu": cpu,
+        "memory": mem,
+        "disks": disks,
+        "gpus": gpus,
+    }
+
+
+# ========= 网络部分 =========
+
+def _get_public_ip():
+    """尝试获取公网 IP，尽量简单粗暴。"""
+    # 优先 requests
+    if requests is not None:
+        for url in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+            try:
+                r = requests.get(url, timeout=3)
+                ip = r.text.strip()
+                if ip:
+                    return ip
+            except Exception:
+                continue
+    # 备用：urllib
+    try:
+        import urllib.request
+        with urllib.request.urlopen("https://api.ipify.org", timeout=3) as resp:
+            ip = resp.read().decode().strip()
+            if ip:
+                return ip
+    except Exception:
+        pass
+    return None
+
+
+def _is_private_ipv4(ip: str) -> bool:
+    if not ip:
+        return False
+    parts = ip.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        p0 = int(parts[0])
+        p1 = int(parts[1])
+    except ValueError:
+        return False
+
+    # 10.0.0.0/8
+    if p0 == 10:
+        return True
+    # 172.16.0.0 ~ 172.31.0.0
+    if p0 == 172 and 16 <= p1 <= 31:
+        return True
+    # 192.168.0.0/16
+    if p0 == 192 and p1 == 168:
+        return True
+    return False
+
+
+def get_network_overview():
+    """
+    返回结构大概：
+    {
+      "public_ip": "...",
+      "lan_ip": "...",
+      "interfaces": [
+         {"name": "...", "ipv4": "...", "ipv6": "...", "is_up": True, "speed": 1000}
+      ],
+      "listeners": [
+         {"laddr_ip": "0.0.0.0", "laddr_port": 8000, "pid": 1234, "process": "python", "status": "LISTEN"}
+      ]
+    }
+    """
+    # 公网 IP
+    public_ip = _get_public_ip()
+
+    # 网卡信息
+    if_addrs = psutil.net_if_addrs()
+    if_stats = psutil.net_if_stats()
+
+    interfaces = []
+    candidate_lan_ips = []
+
+    for name, addrs in if_addrs.items():
+        ipv4 = None
+        ipv6 = None
+        for a in addrs:
+            if a.family == socket.AF_INET:
+                ipv4 = a.address
+                if _is_private_ipv4(ipv4):
+                    candidate_lan_ips.append(ipv4)
+            elif a.family == socket.AF_INET6:
+                ipv6 = a.address.split("%")[0]  # 去掉 scope_id
+
+        st = if_stats.get(name)
+        is_up = st.isup if st else False
+        speed = st.speed if st and st.speed > 0 else None
+
+        interfaces.append({
+            "name": name,
+            "ipv4": ipv4,
+            "ipv6": ipv6,
+            "is_up": is_up,
+            "speed": speed,
+        })
+
+    # 选一个“主”局域网 IP
+    lan_ip = candidate_lan_ips[0] if candidate_lan_ips else None
+
+    # 监听端口信息
+    listeners = []
+    try:
+        conns = psutil.net_connections(kind="inet")
+        for c in conns:
+            if c.status != psutil.CONN_LISTEN:
+                continue
+            laddr_ip = c.laddr.ip if c.laddr else ""
+            laddr_port = c.laddr.port if c.laddr else None
+            pid = c.pid
+            pname = None
+            if pid:
+                try:
+                    pname = psutil.Process(pid).name()
+                except Exception:
+                    pname = None
+            listeners.append({
+                "laddr_ip": laddr_ip,
+                "laddr_port": laddr_port,
+                "pid": pid,
+                "process": pname or "unknown",
+                "status": "LISTEN",
+            })
+    except Exception:
+        listeners = []
+
+    # 为了在 Jinja 里好用，返回 dict
+    return {
+        "public_ip": public_ip,
+        "lan_ip": lan_ip,
+        "interfaces": interfaces,
+        "listeners": listeners,
+    }
