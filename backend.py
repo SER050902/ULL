@@ -7,6 +7,8 @@ import socket
 import subprocess as _sp
 import platform as _plat
 import sys
+import os
+import string
 
 # ========= 可选：requests 用来查公网 IP =========
 try:
@@ -414,3 +416,122 @@ def get_network_overview():
         "interfaces": interfaces,
         "listeners": listeners,
     }
+
+from pathlib import Path
+from werkzeug.utils import secure_filename
+
+from pathlib import Path
+
+def _safe_join(root: str, rel: str) -> Path:
+    r"""
+    支持：
+    - rel == ""        → 虚拟根（盘符视图）
+    - rel == "C:"      → C:\
+    - rel == "C:/xx"   → C:\xx
+    """
+    if not rel:
+        raise ValueError("Virtual root")
+
+    rel = (rel or "").replace("\\", "/").strip("/")
+
+    if len(rel) >= 2 and rel[1] == ":":
+        return Path(rel.replace("/", "\\") + "\\").resolve()
+
+    root_path = Path(root).resolve()
+    target = (root_path / rel).resolve()
+    if root_path != target and root_path not in target.parents:
+        raise ValueError("Unsafe path")
+    return target
+
+def list_dir(root: str, rel: str = ""):
+    # 👉 空路径：返回盘符
+    if not rel:
+        return list_roots_windows()
+
+    p = _safe_join(root, rel)
+
+    if not p.exists():
+        raise FileNotFoundError("Path not found")
+    if not p.is_dir():
+        raise NotADirectoryError("Not a directory")
+
+    items = []
+    for child in sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+        try:
+            stat = child.stat()
+            items.append({
+                "name": child.name,
+                "is_dir": child.is_dir(),
+                "size": stat.st_size if child.is_file() else None,
+                "mtime": stat.st_mtime,
+            })
+        except Exception:
+            items.append({
+                "name": child.name,
+                "is_dir": child.is_dir(),
+                "size": None,
+                "mtime": None,
+            })
+    return items
+
+def delete_path(root: str, rel: str):
+    p = _safe_join(root, rel)
+    if not p.exists():
+        return
+    if p.is_dir():
+        # 只允许删空目录（更安全）
+        p.rmdir()
+    else:
+        p.unlink()
+
+def make_dir(root: str, rel_dir: str, name: str):
+    base = _safe_join(root, rel_dir)
+    base.mkdir(parents=True, exist_ok=True)
+    safe = secure_filename(name) or name  # 中文名 secure_filename 可能变空，这里保底
+    target = (base / safe)
+    target.mkdir(exist_ok=False)
+
+def rename_path(root: str, rel: str, new_name: str):
+    p = _safe_join(root, rel)
+    if not p.exists():
+        raise FileNotFoundError("Not found")
+    safe = secure_filename(new_name) or new_name
+    newp = p.parent / safe
+    p.rename(newp)
+
+def save_upload(root: str, rel_dir: str, file_storage):
+    base = _safe_join(root, rel_dir)
+    base.mkdir(parents=True, exist_ok=True)
+    filename = secure_filename(file_storage.filename) or file_storage.filename
+    if not filename:
+        raise ValueError("Empty filename")
+    dst = (base / filename)
+    file_storage.save(str(dst))
+    return filename
+
+def build_breadcrumbs(rel: str):
+    rel = (rel or "").replace("\\", "/").strip("/")
+    crumbs = []
+    if not rel:
+        return crumbs
+    parts = rel.split("/")
+    acc = []
+    for part in parts:
+        acc.append(part)
+        crumbs.append({"name": part, "path": "/".join(acc)})
+    return crumbs
+
+
+def list_roots_windows():
+    """返回 Windows 盘符列表，如 C:, D:"""
+    drives = []
+    for letter in string.ascii_uppercase:
+        drive = f"{letter}:"
+        if os.path.exists(drive + "\\"):
+            drives.append({
+                "name": drive,
+                "is_dir": True,
+                "size": None,
+                "mtime": None,
+            })
+    return drives
