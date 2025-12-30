@@ -11,6 +11,15 @@
   {% endif %}
 {% endwith %}
 
+{# ✅ C 盘根目录提示 #}
+{% if is_c_root %}
+  <div class="alert alert-warning py-2">
+    <b>注意：</b>你当前在 <span class="font-monospace">C:</span> 根目录。
+    该目录受系统保护，通常没有创建/删除/重命名权限。
+    建议进入 <span class="font-monospace">C:/Users/你的用户名</span> 或其他盘符再操作。
+  </div>
+{% endif %}
+
 <div class="d-flex align-items-center justify-content-between mb-3">
   <div>
     <h3 class="mb-0">文件管理器</h3>
@@ -22,14 +31,14 @@
   <div class="d-flex gap-2">
     <form class="d-flex gap-2" method="post" action="{{ url_for('files_mkdir') }}">
       <input type="hidden" name="path" value="{{ path }}">
-      <input class="form-control form-control-sm" name="name" placeholder="新建文件夹名">
-      <button class="btn btn-sm btn-outline-primary" type="submit">新建文件夹</button>
+      <input class="form-control form-control-sm" name="name" placeholder="新建文件夹名" {% if is_c_root %}disabled{% endif %}>
+      <button class="btn btn-sm btn-outline-primary" type="submit" {% if is_c_root %}disabled{% endif %}>新建文件夹</button>
     </form>
 
     <form class="d-flex gap-2" method="post" action="{{ url_for('files_upload') }}" enctype="multipart/form-data">
       <input type="hidden" name="path" value="{{ path }}">
-      <input class="form-control form-control-sm" type="file" name="file">
-      <button class="btn btn-sm btn-primary" type="submit">上传</button>
+      <input class="form-control form-control-sm" type="file" name="file" {% if is_c_root %}disabled{% endif %}>
+      <button class="btn btn-sm btn-primary" type="submit" {% if is_c_root %}disabled{% endif %}>上传</button>
     </form>
   </div>
 </div>
@@ -44,6 +53,13 @@
     {% endfor %}
   </ol>
 </nav>
+
+{% if is_c_root %}
+  <div class="text-muted small mb-2">
+    <span class="badge text-bg-warning">受保护</span>
+    C: 根目录已禁用写入类操作（新建/上传/删除/重命名）。
+  </div>
+{% endif %}
 
 <div class="card shadow-sm">
   <div class="card-body p-0">
@@ -89,19 +105,30 @@
                    href="{{ url_for('files_download', path=child_path) }}">下载</a>
               {% endif %}
 
-              <form method="post" action="{{ url_for('files_delete') }}" onsubmit="return confirm('确认删除？仅支持删除空目录。')">
+              <form method="post" action="{{ url_for('files_delete') }}"
+                    onsubmit="return confirm('确认删除？仅支持删除空目录。')">
                 <input type="hidden" name="path" value="{{ child_path }}">
                 <input type="hidden" name="cur" value="{{ path }}">
-                <button class="btn btn-sm btn-outline-danger" type="submit">删除</button>
+                <button class="btn btn-sm btn-outline-danger" type="submit" {% if is_c_root %}disabled{% endif %}>
+                  删除
+                </button>
               </form>
 
               <form class="d-flex gap-2" method="post" action="{{ url_for('files_rename') }}">
                 <input type="hidden" name="path" value="{{ child_path }}">
                 <input type="hidden" name="cur" value="{{ path }}">
-                <input class="form-control form-control-sm" name="new_name" placeholder="新名字">
-                <button class="btn btn-sm btn-outline-primary" type="submit">重命名</button>
+                <input class="form-control form-control-sm" name="new_name" placeholder="新名字" {% if is_c_root %}disabled{% endif %}>
+                <button class="btn btn-sm btn-outline-primary" type="submit" {% if is_c_root %}disabled{% endif %}>
+                  重命名
+                </button>
               </form>
             </div>
+
+            {% if is_c_root %}
+              <div class="text-muted small mt-1">
+                在 C: 根目录已禁用写入类操作
+              </div>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

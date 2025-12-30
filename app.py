@@ -28,10 +28,14 @@ def create_app():
         try:
             items = list_dir(app.config["FILE_ROOT"], path)
             crumbs = build_breadcrumbs(path)
-            return render_template("files.html", items=items, path=path, crumbs=crumbs)
+
+            norm = (path or "").replace("\\", "/").strip("/")
+            is_c_root = (norm.upper() == "C:")
+
+            return render_template("files.html", items=items, path=path, crumbs=crumbs, is_c_root=is_c_root)
         except Exception as e:
             flash(f"打开目录失败：{e}", "danger")
-            return render_template("files.html", items=[], path="", crumbs=[])
+            return render_template("files.html", items=[], path="", crumbs=[], is_c_root=False)
 
     # ✅ 下载
     @app.route("/files/download")
@@ -47,6 +51,11 @@ def create_app():
     @app.route("/files/upload", methods=["POST"])
     def files_upload():
         path = request.form.get("path", "")
+        norm = (path or "").replace("\\", "/").strip("/")
+        if norm.upper() == "C:":
+            flash("C 盘根目录受系统保护，不允许在此上传/写入。请进入 C:/Users/你的用户名 或其他盘符。", "warning")
+            return redirect(url_for("files", path=path))
+
         f = request.files.get("file")
         if not f:
             flash("没有选择文件。", "warning")
@@ -62,6 +71,11 @@ def create_app():
     @app.route("/files/mkdir", methods=["POST"])
     def files_mkdir():
         path = request.form.get("path", "")
+        norm = (path or "").replace("\\", "/").strip("/")
+        if norm.upper() == "C:":
+            flash("C 盘根目录受系统保护，不允许在此新建文件夹。请进入你的用户目录或其他盘符。", "warning")
+            return redirect(url_for("files", path=path))
+
         name = request.form.get("name", "").strip()
         if not name:
             flash("文件夹名不能为空。", "warning")
@@ -74,11 +88,18 @@ def create_app():
         return redirect(url_for("files", path=path))
 
     # ✅ 删除（文件/空文件夹）
+    from pathlib import Path
+
     @app.route("/files/delete", methods=["POST"])
     def files_delete():
         path = request.form.get("path", "")
         cur = request.form.get("cur", "")
         try:
+            p = _safe_join(app.config["FILE_ROOT"], path)
+            if p.drive.upper() == "C:" and p.parent.resolve() == Path("C:\\").resolve():
+                flash("C 盘根目录下多为系统文件/目录，出于安全与权限原因，已禁止在此删除。", "warning")
+                return redirect(url_for("files", path=cur))
+
             delete_path(app.config["FILE_ROOT"], path)
             flash("删除成功。", "success")
         except Exception as e:
@@ -86,6 +107,8 @@ def create_app():
         return redirect(url_for("files", path=cur))
 
     # ✅ 重命名
+    from pathlib import Path
+
     @app.route("/files/rename", methods=["POST"])
     def files_rename():
         path = request.form.get("path", "")
@@ -95,6 +118,11 @@ def create_app():
             flash("新名字不能为空。", "warning")
             return redirect(url_for("files", path=cur))
         try:
+            p = _safe_join(app.config["FILE_ROOT"], path)
+            if p.drive.upper() == "C:" and p.parent.resolve() == Path("C:\\").resolve():
+                flash("C 盘根目录下多为系统文件/目录，出于安全与权限原因，已禁止在此重命名。", "warning")
+                return redirect(url_for("files", path=cur))
+
             rename_path(app.config["FILE_ROOT"], path, new_name)
             flash("重命名成功。", "success")
         except Exception as e:
